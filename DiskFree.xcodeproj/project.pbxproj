@@ -1,0 +1,33 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+00000000000000000000007A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceGuard.swift; sourceTree = "<group>"; };
+0000000000000000000000DE = {isa = PBXBuildFile; fileRef = 00000000000000000000007A; };
+000000000000000000000079 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+0000000000000000000000DD = {isa = PBXBuildFile; fileRef = 000000000000000000000079; };
+000000000000000000000078 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
+0000000000000000000000DC = {isa = PBXBuildFile; fileRef = 000000000000000000000078; };
+000000000000000000000064 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsProvider.swift; sourceTree = "<group>"; };
+0000000000000000000000C8 = {isa = PBXBuildFile; fileRef = 000000000000000000000064; };
+000000000000000000000065 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
+0000000000000000000000C9 = {isa = PBXBuildFile; fileRef = 000000000000000000000065; };
+000000000000000000000066 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskMonitor.swift; sourceTree = "<group>"; };
+0000000000000000000000CA = {isa = PBXBuildFile; fileRef = 000000000000000000000066; };
+000000000000000000000067 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskFreeApp.swift; sourceTree = "<group>"; };
+0000000000000000000000CB = {isa = PBXBuildFile; fileRef = 000000000000000000000067; };
+00000000000000000000006E = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+00000000000000000000006F = {isa = PBXFileReference; explicitFileType = wrapper.application; path = DiskFree.app; sourceTree = BUILT_PRODUCTS_DIR; };
+000000000000000000000001 = {isa = PBXGroup; children = (000000000000000000000002, 000000000000000000000003); sourceTree = "<group>"; };
+000000000000000000000002 = {isa = PBXGroup; children = (000000000000000000000078, 000000000000000000000079, 00000000000000000000007A, 000000000000000000000064, 000000000000000000000065, 000000000000000000000066, 000000000000000000000067, 00000000000000000000006E); path = DiskFree; sourceTree = "<group>"; };
+000000000000000000000003 = {isa = PBXGroup; children = (00000000000000000000006F); name = Products; sourceTree = "<group>"; };
+000000000000000000000004 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0000000000000000000000DC, 0000000000000000000000DD, 0000000000000000000000DE, 0000000000000000000000C8, 0000000000000000000000C9, 0000000000000000000000CA, 0000000000000000000000CB); runOnlyForDeploymentPostprocessing = 0; };
+000000000000000000000005 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+000000000000000000000006 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+000000000000000000000007 = {isa = PBXNativeTarget; buildConfigurationList = 000000000000000000000008; buildPhases = (000000000000000000000004, 000000000000000000000005, 000000000000000000000006); buildRules = (); dependencies = (); name = DiskFree; productName = DiskFree; productReference = 00000000000000000000006F; productType = "com.apple.product-type.application"; };
+000000000000000000000009 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1520; }; buildConfigurationList = 00000000000000000000000A; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en, Base); mainGroup = 000000000000000000000001; productRefGroup = 000000000000000000000003; projectDirPath = ""; projectRoot = ""; targets = (000000000000000000000007); };
+000000000000000000000014 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 13.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; }; };
+000000000000000000000015 = {isa = XCBuildConfiguration; name = Release; buildSettings = {SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 13.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; }; };
+000000000000000000000016 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {PRODUCT_NAME = DiskFree; PRODUCT_BUNDLE_IDENTIFIER = com.diskfree.utility; INFOPLIST_FILE = DiskFree/Info.plist; GENERATE_INFOPLIST_FILE = NO; CODE_SIGN_STYLE = Automatic; CODE_SIGN_IDENTITY = "-"; ENABLE_HARDENED_RUNTIME = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; MACOSX_DEPLOYMENT_TARGET = 13.0; COMBINE_HIDPI_IMAGES = YES; }; };
+000000000000000000000017 = {isa = XCBuildConfiguration; name = Release; buildSettings = {PRODUCT_NAME = DiskFree; PRODUCT_BUNDLE_IDENTIFIER = com.diskfree.utility; INFOPLIST_FILE = DiskFree/Info.plist; GENERATE_INFOPLIST_FILE = NO; CODE_SIGN_STYLE = Automatic; CODE_SIGN_IDENTITY = "-"; ENABLE_HARDENED_RUNTIME = YES; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; MACOSX_DEPLOYMENT_TARGET = 13.0; COMBINE_HIDPI_IMAGES = YES; }; };
+000000000000000000000008 = {isa = XCConfigurationList; buildConfigurations = (000000000000000000000016, 000000000000000000000017); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+00000000000000000000000A = {isa = XCConfigurationList; buildConfigurations = (000000000000000000000014, 000000000000000000000015); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+}; rootObject = 000000000000000000000009; }
