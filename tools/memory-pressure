@@ -1,0 +1,106 @@
+#!/usr/bin/env swift
+// macOS only. Execute directly: ./tools/memory-pressure
+import Foundation
+import Darwin
+
+private var savedTerminal = termios()
+private var terminalChanged = false
+private func interrupted(_ number: Int32) {
+    if terminalChanged { _ = tcsetattr(STDIN_FILENO, TCSANOW, &savedTerminal) }
+    _exit(128 + number) // macOS releases all mappings, including swapped-out pages.
+}
+private func counter<T>(_ name: String, into value: inout T) -> Bool {
+    var size = MemoryLayout<T>.size
+    return withUnsafeMutableBytes(of: &value) { sysctlbyname(name, $0.baseAddress, &size, nil, 0) == 0 }
+}
+private func pressure() -> Int32? {
+    var value: Int32 = 0
+    return counter("kern.memorystatus_vm_pressure_level", into: &value) && [1, 2, 4].contains(value) ? value : nil
+}
+private func name(_ value: Int32) -> String { value == 1 ? "normal" : value == 2 ? "yellow" : "red" }
+private func gb(_ bytes: UInt64) -> String { String(format: "%.2f GB", Double(bytes) / 1e9) }
+private func run() throws {
+    let help = """
+    Usage: ./tools/memory-pressure [--check | --help]
+    1 = release this tool's memory (normal); 2 = target yellow; 3 = target red
+    0 / Ctrl-C = release and exit. Keys work without Enter.
+    Real RAM pressure: red can make the Mac unresponsive. Save work first.
+    Allocation is gradual, capped at 85% of physical RAM, and released after 5 minutes.
+    Targets are best effort; this tool cannot release memory owned by other apps.
+    """
+    if CommandLine.arguments.contains("--help") { print(help); return }
+    guard CommandLine.arguments.dropFirst().allSatisfy({ $0 == "--check" }) else {
+        throw NSError(domain: "MemoryTool", code: 1, userInfo: [NSLocalizedDescriptionKey: help])
+    }
+    var ram: UInt64 = 0
+    guard counter("hw.memsize", into: &ram), ram > 0, let initial = pressure() else {
+        throw NSError(domain: "MemoryTool", code: 2, userInfo: [NSLocalizedDescriptionKey: "Native memory counters unavailable; no memory allocated."])
+    }
+    let mib: UInt64 = 1_048_576
+    let chunk = Int(min(128 * mib, max(16 * mib, ram / 128)))
+    let cap = ram / 100 * 85
+    print("RAM: \(gb(ram)) · Current pressure: \(name(initial)) · Allocation cap: \(gb(cap))")
+    if CommandLine.arguments.contains("--check") { return }
+    guard isatty(STDIN_FILENO) == 1, tcgetattr(STDIN_FILENO, &savedTerminal) == 0 else {
+        throw NSError(domain: "MemoryTool", code: 3, userInfo: [NSLocalizedDescriptionKey: "Run interactively in Terminal, or use --check. No memory allocated."])
+    }
+    var terminal = savedTerminal
+    terminal.c_lflag &= ~tcflag_t(ICANON | ECHO)
+    terminal.c_lflag |= tcflag_t(ISIG)
+    for number in [SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGTSTP] { signal(number, interrupted) }
+    terminalChanged = true
+    guard tcsetattr(STDIN_FILENO, TCSANOW, &terminal) == 0 else {
+        _ = tcsetattr(STDIN_FILENO, TCSANOW, &savedTerminal); terminalChanged = false
+        throw POSIXError(.ENOTTY)
+    }
+    var blocks: [UnsafeMutableRawPointer] = []
+    var target: Int32 = 1
+    var deadline = ProcessInfo.processInfo.systemUptime
+    var nextStep = 0.0
+    func release() { for block in blocks { munmap(block, chunk) }; blocks.removeAll() }
+    defer { release(); _ = tcsetattr(STDIN_FILENO, TCSANOW, &savedTerminal); terminalChanged = false; print("\nReleased test memory.") }
+    print(help)
+    print("Waiting in normal mode. Choose 2 or 3 to begin; nothing is allocated yet.")
+    while true {
+        var descriptor = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
+        let ready = poll(&descriptor, 1, 200)
+        if ready < 0 { break }
+        if ready > 0 {
+            var key: UInt8 = 0
+            guard read(STDIN_FILENO, &key, 1) == 1 else { break }
+            if key == 48 { break }
+            if [49, 50, 51].contains(key) {
+                target = key == 49 ? 1 : key == 50 ? 2 : 4
+                if target == 1 { release() }
+                deadline = ProcessInfo.processInfo.systemUptime + 300
+                print("\nTarget: \(name(target)). 1 releases memory; 0 exits.")
+            }
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now >= nextStep else { continue }
+        nextStep = now + 1
+        guard let current = pressure() else { print("\nPressure counter unavailable; stopping."); break }
+        if target != 1 && now >= deadline { release(); target = 1; print("\nFive-minute limit: released memory.") }
+        if target != 1 {
+            var disk = statfs()
+            guard statfs("/System/Volumes/Data", &disk) == 0,
+                  UInt64(disk.f_bavail) * UInt64(disk.f_bsize) > max(5_368_709_120, ram / 8) else {
+                print("\nDisk-space reserve reached or unavailable; stopping."); break
+            }
+            if current > target, let block = blocks.popLast() { munmap(block, chunk) }
+            else if current < target && UInt64(blocks.count + 1) * UInt64(chunk) <= cap {
+                guard let block = mmap(nil, chunk, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0), block != MAP_FAILED else {
+                    print("\nAllocation failed; stopping."); break
+                }
+                // Random bytes force real page allocation instead of compressible zero pages.
+                arc4random_buf(block, chunk)
+                blocks.append(block)
+            }
+        }
+        let allocated = UInt64(blocks.count) * UInt64(chunk)
+        let capped = target != 1 && current < target && allocated + UInt64(chunk) > cap
+        print("\rPressure: \(name(current)) · Tool: \(gb(allocated)) · Target: \(name(target))\(capped ? " · cap reached" : "                 ")", terminator: "")
+        fflush(stdout)
+    }
+}
+do { try run() } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }

@@ -6,7 +6,10 @@ import ServiceManagement
 struct DiskFreeApp: App {
     @StateObject private var preferences: Preferences
     @StateObject private var monitor: DiskMonitor
+    @StateObject private var growth: GrowthMonitor
+    @StateObject private var backups: BackupActivityMonitor
     private let settings = SettingsController()
+    private let investigation = InvestigationController()
     private let historyController = HistoryController()
     private let historyStore: HistoryStore
 
@@ -16,14 +19,44 @@ struct DiskFreeApp: App {
         let historyStore = HistoryStore()
         self.historyStore = historyStore
         _preferences = StateObject(wrappedValue: preferences)
-        _monitor = StateObject(wrappedValue: DiskMonitor(preferences: preferences, historyStore: historyStore))
+        let growth = GrowthMonitor(preferences: preferences, consumerStore: historyStore.consumers)
+        let backups = BackupActivityMonitor(store: historyStore.backups)
+        let monitor = DiskMonitor(preferences: preferences, historyStore: historyStore)
+        _growth = StateObject(wrappedValue: growth)
+        _backups = StateObject(wrappedValue: backups)
+        _monitor = StateObject(wrappedValue: monitor)
+        if CommandLine.arguments.contains("--show-investigate") {
+            let controller = investigation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                controller.show(preferences: preferences, growth: growth)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    NotificationCenter.default.post(name: Notification.Name("DiskFree.showAppLeftovers"), object: nil)
+                }
+            }
+        }
+        if CommandLine.arguments.contains("--show-history") {
+            let controller = historyController, investigation = self.investigation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                controller.show(store: historyStore, monitor: monitor, growth: growth, preferences: preferences, backups: backups, reviewBackups: {
+                    investigation.show(preferences: preferences, growth: growth, showTimeMachine: true)
+                }) {
+                    investigation.show(preferences: preferences, growth: growth)
+                }
+            }
+        }
     }
     var body: some Scene {
         MenuBarExtra {
-            DiskMenu(monitor: monitor, preferences: preferences, showSettings: {
+            DiskMenu(monitor: monitor, preferences: preferences, showInvestigation: {
+                investigation.show(preferences: preferences, growth: growth)
+            }, showSettings: {
                 settings.show(preferences: preferences, store: historyStore, monitor: monitor)
             }, showHistory: {
-                historyController.show(store: historyStore, monitor: monitor)
+                historyController.show(store: historyStore, monitor: monitor, growth: growth, preferences: preferences, backups: backups, reviewBackups: {
+                    investigation.show(preferences: preferences, growth: growth, showTimeMachine: true)
+                }) {
+                    investigation.show(preferences: preferences, growth: growth)
+                }
             })
         } label: {
             Image(nsImage: MenuIndicator.image(snapshot: monitor.snapshot,
@@ -76,6 +109,7 @@ enum MenuIndicator {
 struct DiskMenu: View {
     @ObservedObject var monitor: DiskMonitor
     @ObservedObject var preferences: Preferences
+    let showInvestigation: () -> Void
     let showSettings: () -> Void
     let showHistory: () -> Void
     var body: some View {
@@ -110,10 +144,17 @@ struct DiskMenu: View {
             Button(monitor.isRefreshing ? "Refreshing…" : "Refresh Now") { monitor.refresh() }
                 .disabled(monitor.isRefreshing)
             Button("History…", action: showHistory)
+            Button("Investigate Space Changes…", action: showInvestigation)
             Button("Settings…", action: showSettings).keyboardShortcut(",")
             Button("Quit DiskFree") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
         }
         .padding(16).frame(width: 320)
+        // An opaque adaptive surface keeps contrast independent of windows behind the popover.
+        .background(Color(nsColor: .windowBackgroundColor))
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        // A menu-bar panel can be non-key while interactive; render its controls as active.
+        .environment(\.controlActiveState, .active)
     }
     private func row(_ label: String, _ value: String) -> some View {
         HStack { Text(label).foregroundStyle(.secondary); Spacer(); Text(value).monospacedDigit() }
@@ -121,21 +162,61 @@ struct DiskMenu: View {
     }
 }
 
+/// Promote only while an app-owned top-level window is open. Sheets remain
+/// attached to these windows; the menu-bar popover is deliberately not tracked.
+@MainActor final class AppWindowPresence {
+    static let shared = AppWindowPresence()
+    private let windows = NSHashTable<NSWindow>.weakObjects()
+    func present(_ window: NSWindow) {
+        windows.add(window)
+        window.collectionBehavior.insert(.participatesInCycle)
+        window.isExcludedFromWindowsMenu = false
+        NSApp.setActivationPolicy(.regular)
+        if NSApp.windowsMenu == nil {
+            let menu = NSApp.mainMenu ?? NSMenu()
+            if NSApp.mainMenu == nil {
+                let application = NSMenu()
+                application.addItem(withTitle: "Quit DiskFree", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+                let entry = NSMenuItem(); entry.submenu = application; menu.addItem(entry)
+                NSApp.mainMenu = menu
+            }
+            let entries = NSMenu(title: "Window")
+            entries.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+            entries.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+            entries.addItem(.separator())
+            entries.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+            item.submenu = entries; menu.addItem(item); NSApp.windowsMenu = entries
+        }
+        NSApp.addWindowsItem(window, title: window.title, filename: false)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+    func closed(_ window: NSWindow) {
+        windows.remove(window); NSApp.removeWindowsItem(window)
+        if windows.allObjects.isEmpty { NSApp.setActivationPolicy(.accessory) }
+    }
+}
+
 @MainActor
-final class SettingsController {
+final class SettingsController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow { AppWindowPresence.shared.closed(window) }
+        window?.contentView = nil; window = nil
+    }
     func show(preferences: Preferences, store: HistoryStore, monitor: DiskMonitor) {
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 510),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "DiskFree Settings"
+            window.delegate = self
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: SettingsView(preferences: preferences, store: store, monitor: monitor))
             window.center()
             self.window = window
         }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        if let window { AppWindowPresence.shared.present(window) }
     }
 }
 
@@ -169,8 +250,14 @@ struct SettingsView: View {
             if SMAppService.mainApp.status == .requiresApproval {
                 Button("Open Login Items Settings") { SMAppService.openSystemSettingsLoginItems() }
             }
+            Section("Space changes") {
+                Toggle("Track folder growth at background priority", isOn: $preferences.trackGrowth)
+                Toggle("Discover common model stores and development caches", isOn: $preferences.autoDiscoverConsumers)
+                Text("Choose folders and view yesterday/seven-day growth in Investigate Space Changes. Tracking is separate from disk refresh and can be switched off here.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("History") {
-                Text("Monthly CSV logs are saved in Application Support and survive app updates. No automatic deletion.")
+                Text("Monthly CSV and JSONL histories are saved in Application Support and survive app updates. No automatic deletion.")
                     .font(.caption).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 8) {
                     Button("Show Logs in Finder") { NSWorkspace.shared.open(store.directory) }
@@ -182,7 +269,7 @@ struct SettingsView: View {
             Text("Preferences save automatically. Login registration is managed by macOS. Install DiskFree in Applications before enabling it.")
                 .font(.caption).foregroundStyle(.secondary)
         }
-        .formStyle(.grouped).padding(8).frame(width: 480, height: 510)
+        .formStyle(.grouped).padding(8).frame(width: 480, height: 620)
         .alert("Remove history older than one year?", isPresented: $confirmCleanup) {
             Button("Cancel", role: .cancel) {}
             Button("Remove Old History", role: .destructive) { cleanHistory() }

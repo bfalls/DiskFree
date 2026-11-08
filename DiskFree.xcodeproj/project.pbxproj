@@ -1,5 +1,41 @@
 // !$*UTF8*$!
 { archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+000000000000000000000091 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLeftovers.swift; sourceTree = "<group>"; };
+0000000000000000000000F5 = {isa = PBXBuildFile; fileRef = 000000000000000000000091; };
+000000000000000000000092 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLeftoversView.swift; sourceTree = "<group>"; };
+0000000000000000000000F6 = {isa = PBXBuildFile; fileRef = 000000000000000000000092; };
+000000000000000000000090 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSuspects.swift; sourceTree = "<group>"; };
+0000000000000000000000F4 = {isa = PBXBuildFile; fileRef = 000000000000000000000090; };
+00000000000000000000008E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceChanges.swift; sourceTree = "<group>"; };
+0000000000000000000000F2 = {isa = PBXBuildFile; fileRef = 00000000000000000000008E; };
+00000000000000000000008F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceChangeReportView.swift; sourceTree = "<group>"; };
+0000000000000000000000F3 = {isa = PBXBuildFile; fileRef = 00000000000000000000008F; };
+00000000000000000000008D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupLog.swift; sourceTree = "<group>"; };
+0000000000000000000000F1 = {isa = PBXBuildFile; fileRef = 00000000000000000000008D; };
+00000000000000000000008B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageComposition.swift; sourceTree = "<group>"; };
+0000000000000000000000EF = {isa = PBXBuildFile; fileRef = 00000000000000000000008B; };
+00000000000000000000008C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageInspectionView.swift; sourceTree = "<group>"; };
+0000000000000000000000F0 = {isa = PBXBuildFile; fileRef = 00000000000000000000008C; };
+
+00000000000000000000008A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemHistory.swift; sourceTree = "<group>"; };
+0000000000000000000000EE = {isa = PBXBuildFile; fileRef = 00000000000000000000008A; };
+000000000000000000000089 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupHistory.swift; sourceTree = "<group>"; };
+0000000000000000000000ED = {isa = PBXBuildFile; fileRef = 000000000000000000000089; };
+000000000000000000000088 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockerDiskStatistics.swift; sourceTree = "<group>"; };
+0000000000000000000000EC = {isa = PBXBuildFile; fileRef = 000000000000000000000088; };
+000000000000000000000087 = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Resources/DiskFree.icns; sourceTree = "<group>"; };
+0000000000000000000000EB = {isa = PBXBuildFile; fileRef = 000000000000000000000087; };
+
+000000000000000000000086 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupContext.swift; sourceTree = "<group>"; };
+0000000000000000000000EA = {isa = PBXBuildFile; fileRef = 000000000000000000000086; };
+000000000000000000000085 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvestigationView.swift; sourceTree = "<group>"; };
+0000000000000000000000E9 = {isa = PBXBuildFile; fileRef = 000000000000000000000085; };
+000000000000000000000084 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightClues.swift; sourceTree = "<group>"; };
+0000000000000000000000E8 = {isa = PBXBuildFile; fileRef = 000000000000000000000084; };
+000000000000000000000083 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrowthMonitor.swift; sourceTree = "<group>"; };
+0000000000000000000000E7 = {isa = PBXBuildFile; fileRef = 000000000000000000000083; };
+000000000000000000000082 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrowthStore.swift; sourceTree = "<group>"; };
+0000000000000000000000E6 = {isa = PBXBuildFile; fileRef = 000000000000000000000082; };
 00000000000000000000007A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceGuard.swift; sourceTree = "<group>"; };
 0000000000000000000000DE = {isa = PBXBuildFile; fileRef = 00000000000000000000007A; };
 000000000000000000000079 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
@@ -17,11 +53,11 @@
 00000000000000000000006E = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 00000000000000000000006F = {isa = PBXFileReference; explicitFileType = wrapper.application; path = DiskFree.app; sourceTree = BUILT_PRODUCTS_DIR; };
 000000000000000000000001 = {isa = PBXGroup; children = (000000000000000000000002, 000000000000000000000003); sourceTree = "<group>"; };
-000000000000000000000002 = {isa = PBXGroup; children = (000000000000000000000078, 000000000000000000000079, 00000000000000000000007A, 000000000000000000000064, 000000000000000000000065, 000000000000000000000066, 000000000000000000000067, 00000000000000000000006E); path = DiskFree; sourceTree = "<group>"; };
+000000000000000000000002 = {isa = PBXGroup; children = (000000000000000000000091, 000000000000000000000092, 000000000000000000000090, 00000000000000000000008E, 00000000000000000000008F, 00000000000000000000008D, 00000000000000000000008B, 00000000000000000000008C, 00000000000000000000008A, 000000000000000000000089, 000000000000000000000088, 000000000000000000000087, 000000000000000000000078, 000000000000000000000079, 00000000000000000000007A, 000000000000000000000082, 000000000000000000000083, 000000000000000000000084, 000000000000000000000085, 000000000000000000000086, 000000000000000000000064, 000000000000000000000065, 000000000000000000000066, 000000000000000000000067, 00000000000000000000006E); path = DiskFree; sourceTree = "<group>"; };
 000000000000000000000003 = {isa = PBXGroup; children = (00000000000000000000006F); name = Products; sourceTree = "<group>"; };
-000000000000000000000004 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0000000000000000000000DC, 0000000000000000000000DD, 0000000000000000000000DE, 0000000000000000000000C8, 0000000000000000000000C9, 0000000000000000000000CA, 0000000000000000000000CB); runOnlyForDeploymentPostprocessing = 0; };
+000000000000000000000004 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0000000000000000000000F5, 0000000000000000000000F6, 0000000000000000000000F4, 0000000000000000000000F2, 0000000000000000000000F3, 0000000000000000000000F1, 0000000000000000000000EF, 0000000000000000000000F0, 0000000000000000000000EE, 0000000000000000000000ED, 0000000000000000000000EC, 0000000000000000000000DC, 0000000000000000000000DD, 0000000000000000000000DE, 0000000000000000000000E6, 0000000000000000000000E7, 0000000000000000000000E8, 0000000000000000000000E9, 0000000000000000000000EA, 0000000000000000000000C8, 0000000000000000000000C9, 0000000000000000000000CA, 0000000000000000000000CB); runOnlyForDeploymentPostprocessing = 0; };
 000000000000000000000005 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-000000000000000000000006 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+000000000000000000000006 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (0000000000000000000000EB); runOnlyForDeploymentPostprocessing = 0; };
 000000000000000000000007 = {isa = PBXNativeTarget; buildConfigurationList = 000000000000000000000008; buildPhases = (000000000000000000000004, 000000000000000000000005, 000000000000000000000006); buildRules = (); dependencies = (); name = DiskFree; productName = DiskFree; productReference = 00000000000000000000006F; productType = "com.apple.product-type.application"; };
 000000000000000000000009 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1520; }; buildConfigurationList = 00000000000000000000000A; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en, Base); mainGroup = 000000000000000000000001; productRefGroup = 000000000000000000000003; projectDirPath = ""; projectRoot = ""; targets = (000000000000000000000007); };
 000000000000000000000014 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 13.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; }; };

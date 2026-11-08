@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 final class Probe: @unchecked Sendable {
     private let lock = NSLock()
@@ -16,25 +17,41 @@ final class Probe: @unchecked Sendable {
 
 @main
 struct Checks {
-    @MainActor static func pump(until condition: () -> Bool, timeout: TimeInterval = 3) {
+    @MainActor static func pump(until condition: () -> Bool, timeout: TimeInterval = 10, line: UInt = #line) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() && Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
-        precondition(condition(), "Timed out waiting for refresh")
+        precondition(condition(), "Timed out waiting for refresh at line \(line)")
     }
-    @MainActor static func main() throws {
-        var historyDone = false
-        Task {
-            do { try await checkHistory(); historyDone = true }
-            catch { fatalError("History checks failed: \(error)") }
-        }
-        pump(until: { historyDone }, timeout: 15)
+    @MainActor static func main() async throws {
+        setbuf(stdout, nil)
+        let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep, reason: "DiskFree validation")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+        if CommandLine.arguments.contains("--history-reuse-diagnostics") { try await diagnoseHistoryReuse(); return }
+        if CommandLine.arguments.contains("--history-reuse-only") { try await checkHistoryReuse(); return }
+        if CommandLine.arguments.contains("--history-loading-only") { try await checkHistoryLoading(); return }
+        if CommandLine.arguments.contains("--leftovers-only") { try await checkAppLeftovers(); return }
+        if CommandLine.arguments.contains("--file-suspects-only") { try await checkFileSuspects(); return }
+        if CommandLine.arguments.contains("--space-only") { try await checkSpaceChanges(); return }
+        if CommandLine.arguments.contains("--backup-logs-only") { try await checkBackupLogs(); return }
+        checkConsumerPreferences()
+        try checkSystemHistory()
+        try checkDockerProvider()
+        try checkGrowth()
+        try await checkGrowthMonitor()
+        try await checkBackupActivityMonitor()
+        try await checkStorageComposition(); try await checkHistory(); try await checkDockerHistory()
+        try await checkBackupHistory(); try await checkBackupLogs(); try await checkSpaceChanges(); try await checkFileSuspects(); try await checkAppLeftovers(); try await checkHistoryLoading(); try await checkHistoryReuse()
         let suite = "DiskFree.Checks.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let prefs = Preferences(defaults: defaults)
-        precondition(prefs.refreshInterval == 60 && !prefs.showPrefix && prefs.warningThresholdGB == 20)
+        precondition(prefs.refreshInterval == 60 && !prefs.showPrefix && prefs.warningThresholdGB == 20 && !prefs.trackGrowth)
+        prefs.trackGrowth = true
+        prefs.growthFolders = [GrowthFolder(id: "test", name: "Test", path: "/tmp/test")]
+        let growthPreferences = Preferences(defaults: defaults)
+        precondition(growthPreferences.trackGrowth && growthPreferences.growthFolders.count == 1)
         for interval in Preferences.intervals {
             prefs.refreshInterval = interval
             precondition(Preferences(defaults: defaults).refreshInterval == interval)
@@ -66,33 +83,46 @@ struct Checks {
         let loggingRoot = FileManager.default.temporaryDirectory.appendingPathComponent("DiskFree-Monitor-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: loggingRoot) }
         let monitorStore = HistoryStore(directory: loggingRoot)
-        let monitor = DiskMonitor(preferences: prefs, historyStore: monitorStore, collect: { try probe.collect() })
-        pump(until: { monitor.snapshot != nil && !monitor.isRefreshing })
+        let dockerProbe = DockerProbe()
+        let monitor = DiskMonitor(preferences: prefs, historyStore: monitorStore, observePower: false, collectVitals: { SystemVitals(allocated: 1_073_741_824, used: 536_870_912, pressure: .warning) }, collect: { try probe.collect() }, collectDocker: { dockerProbe.collect() })
+        await pump(until: { monitor.snapshot != nil && !monitor.isRefreshing })
         precondition(probe.count == 1)
         monitor.refresh(); monitor.refresh()
-        pump(until: { !monitor.isRefreshing })
+        await pump(until: { !monitor.isRefreshing })
         precondition(probe.count == 2, "Overlapping refresh must be skipped")
+        dockerProbe.fail(true)
+        monitor.refresh()
+        await pump(until: { !monitor.isRefreshing })
+        precondition(monitor.errorMessage == nil && monitor.dockerReading.snapshot == nil,
+                     "Docker metadata failure must not fail the disk refresh")
+        dockerProbe.fail(false)
         probe.fail(true)
         monitor.refresh()
-        pump(until: { !monitor.isRefreshing })
+        await pump(until: { !monitor.isRefreshing })
         precondition(monitor.errorMessage != nil && monitor.snapshot != nil)
         probe.fail(false)
         monitor.refresh()
-        pump(until: { !monitor.isRefreshing })
+        await pump(until: { !monitor.isRefreshing })
         precondition(monitor.errorMessage == nil)
         prefs.refreshInterval = 300
         prefs.refreshInterval = 15
         let before = probe.count
-        pump(until: { probe.count > before && !monitor.isRefreshing }, timeout: 18)
+        await pump(until: { probe.count > before && !monitor.isRefreshing }, timeout: 18)
         precondition(probe.count == before + 1, "Only one refresh timer may be active")
         var loggingDone = false
         Task {
             let logged = try! await monitorStore.load(from: Date().addingTimeInterval(-120), through: Date(), bucketSeconds: 60)
-            precondition(logged.sampleCount == 4, "Only successful refreshes should be logged")
-            precondition(monitor.historyError == nil)
+            precondition(logged.sampleCount == 5, "Only successful refreshes should be logged")
+            precondition(monitor.historyError == nil && monitor.dockerHistoryError == nil)
+            let docker = try! await monitorStore.docker.load(from: Date().addingTimeInterval(-120), through: Date(), bucketSeconds: 60)
+            precondition(docker.sampleCount == 5, "Docker must keep recording even when the free-space read fails")
+            let systemStore = monitorStore.system
+            let system = try! await Task.detached { try systemStore.load(from: Date().addingTimeInterval(-120), through: Date(), bucketSeconds: 60) }.value
+            precondition(!system.points.isEmpty && system.points.last?.record.pressure == .warning)
+            precondition(system.points.last?.record.allocated == 1_073_741_824 && monitor.systemHistoryError == nil)
             loggingDone = true
         }
-        pump(until: { loggingDone })
+        await pump(until: { loggingDone })
         print("PASS: monitor history integration")
         print("PASS: capacity, formatting, thresholds, persistence, interval changes, automatic/manual refresh, overlap protection, failure and recovery")
     }
@@ -153,4 +183,97 @@ struct Checks {
         } catch { print("History write failure handled") }
         print("PASS: monthly rollover, durable reopen, exact cutoff cleanup, aggregation/extrema, gaps, malformed tail recovery and preservation, write errors")
     }
+
+    @MainActor static func checkGrowthMonitor() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("DiskFree-GrowthMonitor-\(UUID().uuidString)")
+        let folder = root.appendingPathComponent("files")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 1, count: 4096).write(to: folder.appendingPathComponent("test"))
+        let suite = "DiskFree.GrowthMonitor.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.growthPausedIDs = ["fixture"] // legacy budget failures must migrate automatically
+        preferences.growthFolders = [GrowthFolder(id: "fixture", name: "Fixture", path: folder.path)]
+        let monitor = GrowthMonitor(preferences: preferences, store: GrowthStore(directory: root.appendingPathComponent("cache")))
+        await pump(until: { monitor.ready })
+        precondition(monitor.archive.caches.isEmpty && !preferences.trackGrowth, "Opt-out must not scan")
+        precondition(preferences.growthPausedIDs.isEmpty, "Legacy pauses must not prevent first-run collection")
+        preferences.beginInvestigation()
+        precondition(preferences.trackGrowth, "First opening Investigate starts collection without a recovery step")
+        preferences.trackGrowth = true
+        await pump(until: { monitor.archive.caches["fixture"] != nil && monitor.activeFolder == nil }, timeout: 10)
+        precondition(monitor.archive.caches["fixture"]!.bytes >= 4096)
+        monitor.checkNow()
+        precondition(monitor.activeFolder == nil, "Manual check must respect cooldown")
+        preferences.growthPausedIDs = ["fixture", "other-paused"]
+        monitor.retry("fixture")
+        precondition(preferences.growthPausedIDs == ["other-paused"], "Per-folder retry must leave other categories paused")
+        precondition(monitor.activeFolder == nil, "Per-folder retry must respect cooldown")
+        preferences.trackGrowth = false
+        await pump(until: { monitor.status == "Folder tracking is off." })
+        precondition(monitor.activeFolder == nil)
+        preferences.beginInvestigation()
+        precondition(!preferences.trackGrowth, "Reopening Investigate must respect an explicit pause")
+        let saved = try GrowthStore(directory: root.appendingPathComponent("cache")).load()
+        precondition(saved.readings.count == 1)
+        try await checkGrowthStorageFailure()
+        print("PASS: growth monitor opt-in/out, background baseline, cooldown and persistence integration")
+    }
+    @MainActor static func checkGrowthStorageFailure() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("DiskFree-GrowthWrite-\(UUID().uuidString)")
+        let folder = root.appendingPathComponent("files")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 1, count: 4096).write(to: folder.appendingPathComponent("test"))
+        let blockedStore = root.appendingPathComponent("not-a-directory")
+        try Data("occupied".utf8).write(to: blockedStore)
+        let suite = "DiskFree.GrowthWrite.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.growthFolders = [GrowthFolder(id: "fixture", name: "Fixture", path: folder.path)]
+        let monitor = GrowthMonitor(preferences: preferences, store: GrowthStore(directory: blockedStore))
+        await pump(until: { monitor.ready })
+        preferences.trackGrowth = true
+        await pump(until: { monitor.archive.caches["fixture"] != nil && monitor.activeFolder == nil }, timeout: 10)
+        precondition(monitor.errors["storage"] != nil && monitor.status.contains("Saving folder history needs attention"))
+        precondition(!monitor.accessLimited.contains("fixture"), "A log write failure must not hide a valid folder measurement")
+        preferences.trackGrowth = false
+        await pump(until: { monitor.status == "Folder tracking is off." })
+        print("PASS: folder-history write failure keeps useful sizes visible and reports the persistence issue once")
+    }
+
+    @MainActor static func checkBackupActivityMonitor() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("DiskFree-BackupMonitor-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let probe = BackupActivityProbe()
+        let monitor = BackupActivityMonitor(store: BackupEventStore(directory: root), startTimer: false,
+            status: { probe.status() }, measurements: { probe.values() })
+        monitor.poll(uptime: 0)
+        await pump(until: { monitor.lastCheckedAt != nil })
+        precondition(probe.counts.0 == 1 && probe.counts.1 == 0)
+        monitor.poll(uptime: 59)
+        precondition(probe.counts.0 == 1, "Status checks must be throttled independently of the disk refresh interval")
+        var last = monitor.lastCheckedAt
+        probe.set(true); monitor.poll(uptime: 60); monitor.poll(uptime: 60)
+        await pump(until: { monitor.lastCheckedAt != last })
+        precondition(probe.counts.0 == 2 && probe.counts.1 == 1, "No overlapping status checks; metadata only while running")
+        last = monitor.lastCheckedAt
+        probe.set(false); monitor.poll(uptime: 120)
+        await pump(until: { monitor.lastCheckedAt != last })
+        precondition(probe.counts.1 == 2, "Capture a final endpoint when a stop is observed")
+        let revision = monitor.revision
+        last = monitor.lastCheckedAt
+        monitor.poll(uptime: 180)
+        await pump(until: { monitor.lastCheckedAt != last })
+        precondition(monitor.revision == revision && probe.counts.1 == 2, "Repeated idle checks must not read extra disk metrics or write records")
+        last = monitor.lastCheckedAt
+        probe.set(nil); monitor.poll(uptime: 240)
+        await pump(until: { monitor.lastCheckedAt != last })
+        precondition(!monitor.statusAvailable && monitor.recordingError == nil)
+        print("PASS: backup monitor one-minute throttling, overlap protection, active/stop-only metadata, idle write suppression and unavailable-status handling")
+    }
+
 }
